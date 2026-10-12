@@ -105,7 +105,8 @@
             document.getElementById('app-container').style.display = 'flex';
             document.getElementById('user-tag').innerText = `@${currentUser}`;
 
-            socket = io();
+            socket = io({ transports: ['websocket'] });
+
 
             socket.on('receive_message', (data) => {
                 const container = document.getElementById('message-display');
