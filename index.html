@@ -165,7 +165,6 @@
         function sendLiveMessage() {
             const msgInput = document.getElementById('chat-message');
             if(!msgInput.value) return;
-
             socket.emit('send_message', { sender: currentUser, message: msgInput.value });
             msgInput.value = "";
         }
