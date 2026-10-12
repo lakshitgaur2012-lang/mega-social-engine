@@ -31,7 +31,6 @@
 </head>
 <body>
 
-    <!-- 1. AUTHENTICATION WALL -->
     <div id="auth-screen">
         <h2 style="color: #1877f2; margin-bottom: 15px;">Mega Social Engine</h2>
         <input type="text" id="auth-username" placeholder="Choose Username">
@@ -41,7 +40,6 @@
         <p id="auth-error" style="color: red; font-size: 12px; margin-top: 10px;"></p>
     </div>
 
-    <!-- 2. MAIN APPLICATION RUNTIME INTERFACE -->
     <div id="app-container">
         <div class="panel" id="feed-panel">
             <div class="panel-header">
@@ -68,14 +66,14 @@
     </div>
 
     <script>
-        // CRITICAL FIX: Initialize network sockets immediately at runtime header
-        const socket = io({ transports: ['websocket', 'polling'] });
-        let currentUser = "";
-        let authToken = "";
+        // Global variables initialized securely using standard declaration
+        var globalSocket = io({ transports: ['websocket', 'polling'] });
+        var globalCurrentUser = "";
+        var globalAuthToken = "";
 
-        // Setup live message listeners at startup
-        socket.on('receive_message', (data) => {
-            const container = document.getElementById('message-display');
+        // Messaging event pipelines
+        globalSocket.on('receive_message', function(data) {
+            var container = document.getElementById('message-display');
             container.innerHTML += `
                 <div class="msg-bubble msg-received">
                     <strong>${data.sender}:</strong> ${data.message}
@@ -85,37 +83,37 @@
             document.getElementById('typing-status').innerText = "";
         });
 
-        socket.on('display_typing', (data) => {
-            document.getElementById('typing-status').innerText = `${data.username} is typing...`;
-            setTimeout(() => document.getElementById('typing-status').innerText = "", 2000);
+        globalSocket.on('display_typing', function(data) {
+            document.getElementById('typing-status').innerText = data.username + " is typing...";
+            setTimeout(function() { document.getElementById('typing-status').innerText = ""; }, 2000);
         });
 
         async function handleAuth(type) {
-            const username = document.getElementById('auth-username').value;
-            const password = document.getElementById('auth-password').value;
-            const errorElement = document.getElementById('auth-error');
+            var username = document.getElementById('auth-username').value;
+            var password = document.getElementById('auth-password').value;
+            var errorElement = document.getElementById('auth-error');
             errorElement.innerText = "";
             
             if(!username || !password) return alert("Please fill in all fields.");
 
             try {
-                const response = await fetch(`/api/auth/${type}`, {
+                var response = await fetch('/api/auth/' + type, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username: username, password: password })
                 });
-                const data = await response.json();
+                var data = await response.json();
 
                 if(!response.ok) throw new Error(data.error || "Authentication failed");
 
                 if(type === 'register') {
-                    alert("Account created successfully! Click Sign In to open dashboard.");
+                    alert("Account created! Now click Sign In.");
                 } else {
-                    authToken = data.token;
-                    currentUser = username;
+                    globalAuthToken = data.token;
+                    globalCurrentUser = username;
                     document.getElementById('auth-screen').style.display = 'none';
                     document.getElementById('app-container').style.display = 'flex';
-                    document.getElementById('user-tag').innerText = `@${currentUser}`;
+                    document.getElementById('user-tag').innerText = "@" + globalCurrentUser;
                     fetchFeed();
                 }
             } catch (err) {
@@ -124,17 +122,17 @@
         }
 
         async function publishPost() {
-            const content = document.getElementById('post-text').value;
-            const imageUrl = document.getElementById('post-image').value;
+            var content = document.getElementById('post-text').value;
+            var imageUrl = document.getElementById('post-image').value;
             if(!content) return alert("Post content cannot be empty.");
 
             await fetch('/api/posts', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${authToken}` 
+                    'Authorization': 'Bearer ' + globalAuthToken 
                 },
-                body: JSON.stringify({ content, imageUrl })
+                body: JSON.stringify({ content: content, imageUrl: imageUrl })
             });
 
             document.getElementById('post-text').value = "";
@@ -143,14 +141,13 @@
         }
 
         async function fetchFeed() {
-            const response = await fetch('/api/posts');
-            const posts = await response.json();
-            const stream = document.getElementById('feed-stream');
+            var response = await fetch('/api/posts');
+            var posts = await response.json();
+            var stream = document.getElementById('feed-stream');
             stream.innerHTML = "";
 
-            posts.forEach(post => {
-                // Fixed visual image rendering bug layout syntax
-                const imageTag = post.imageUrl ? `<img src="${post.imageUrl}" class="post-img">` : '';
+            posts.forEach(function(post) {
+                var imageTag = post.imageUrl ? `<img src="${post.imageUrl}" class="post-img">` : '';
                 stream.innerHTML += `
                     <div class="post-card">
                         <div class="post-author">@${post.author}</div>
@@ -161,16 +158,16 @@
         }
 
         function sendLiveMessage() {
-            const msgInput = document.getElementById('chat-message');
-            if(!msgInput.value || !currentUser) return;
+            var msgInput = document.getElementById('chat-message');
+            if(!msgInput.value || !globalCurrentUser) return;
 
-            socket.emit('send_message', { sender: currentUser, message: msgInput.value });
+            globalSocket.emit('send_message', { sender: globalCurrentUser, message: msgInput.value });
             msgInput.value = "";
         }
 
         function emitTyping() {
-            if(!currentUser) return;
-            socket.emit('user_typing', { username: currentUser });
+            if(!globalCurrentUser) return;
+            globalSocket.emit('user_typing', { username: globalCurrentUser });
         }
     </script>
 </body>
