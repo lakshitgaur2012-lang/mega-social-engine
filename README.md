@@ -1,3 +1,183 @@
 [package.json](https://github.com/user-attachments/files/33335780/package.json)
 [server.js](https://github.com/user-attachments/files/33335781/server.js)
-[index.html](https://github.com/user-attachments/files/33335782/index.html)
+[index.html](https://github.com/user-attachments/files/33336961/index.html)
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mega Social Hub Engine</title>
+    <script src="https://socket.io"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }
+        body { display: flex; height: 100vh; background-color: #f0f2f5; color: #1c1e21; }
+        #auth-screen { margin: auto; padding: 30px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+        #auth-screen input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 14px; }
+        #auth-screen button { width: 100%; padding: 12px; background-color: #1877f2; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 15px; margin-top: 5px; }
+        #app-container { display: none; width: 100%; height: 100%; }
+        .panel { height: 100%; display: flex; flex-direction: column; background: white; border-right: 1px solid #e4e6eb; }
+        #feed-panel { flex: 1.2; padding: 20px; overflow-y: auto; background-color: #f7f8fa; }
+        #chat-panel { flex: 1; display: flex; flex-direction: column; }
+        .panel-header { padding: 15px; background: #1877f2; color: white; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+        .post-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .post-author { font-weight: bold; color: #1c1e21; margin-bottom: 5px; }
+        .post-img { width: 100%; max-height: 250px; object-fit: cover; border-radius: 6px; margin-top: 10px; }
+        #message-display { flex: 1; padding: 15px; overflow-y: auto; background: #efeae2; }
+        .msg-bubble { padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; max-width: 75%; width: fit-content; }
+        .msg-received { background: white; align-self: flex-start; }
+        .msg-meta { font-size: 10px; color: #65676b; margin-top: 3px; display: block; text-align: right; }
+        .input-bar { display: flex; padding: 10px; background: #f0f2f5; border-top: 1px solid #e4e6eb; }
+        .input-bar input { flex: 1; padding: 10px; border: 1px solid #ccd0d5; border-radius: 20px; outline: none; padding-left: 15px; }
+        .input-bar button { background: #1877f2; border: none; color: white; padding: 10px 20px; border-radius: 20px; margin-left: 8px; cursor: pointer; font-weight: bold; }
+        #typing-status { font-size: 12px; color: #65676b; padding: 5px 15px; background: #efeae2; font-style: italic; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen">
+        <h2 style="color: #1877f2; margin-bottom: 15px;">Mega Social Engine</h2>
+        <input type="text" id="auth-username" placeholder="Choose Username">
+        <input type="password" id="auth-password" placeholder="Choose Password">
+        <button onclick="handleAuth('register')">Create Account (Sign Up)</button>
+        <button onclick="handleAuth('login')" style="background-color: #42b72a;">Sign In (Login)</button>
+        <p id="auth-error" style="color: red; font-size: 12px; margin-top: 10px;"></p>
+    </div>
+
+    <div id="app-container">
+        <div class="panel" id="feed-panel">
+            <div class="panel-header">
+                <span>📣 Global Social Stream</span>
+                <span id="user-tag" style="font-size: 12px; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px;"></span>
+            </div>
+            <div class="input-bar" style="margin-bottom: 20px; border-radius: 8px; border: 1px solid #e4e6eb;">
+                <input type="text" id="post-text" placeholder="What's happening? Share a status...">
+                <input type="text" id="post-image" placeholder="Image URL (Optional)" style="margin-left: 5px; flex: 0.7;">
+                <button onclick="publishPost()">Post</button>
+            </div>
+            <div id="feed-stream"></div>
+        </div>
+
+        <div class="panel" id="chat-panel">
+            <div class="panel-header">💬 Live Messaging Space</div>
+            <div id="message-display"></div>
+            <div id="typing-status"></div>
+            <div class="input-bar">
+                <input type="text" id="chat-message" placeholder="Type a message..." oninput="emitTyping()">
+                <button onclick="sendLiveMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let currentUser = "";
+        let authToken = "";
+
+        async function handleAuth(type) {
+            const username = document.getElementById('auth-username').value;
+            const password = document.getElementById('auth-password').value;
+            const errorElement = document.getElementById('auth-error');
+            errorElement.innerText = "";
+            
+            if(!username || !password) return alert("Please fill in all fields.");
+
+            try {
+                const response = await fetch(`/api/auth/${type}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+
+                if(!response.ok) throw new Error(data.error || "Authentication failed");
+
+                if(type === 'register') {
+                    alert("Account created! Now click Sign In.");
+                } else {
+                    authToken = data.token;
+                    currentUser = username;
+                    initSocialWorkspace();
+                }
+            } catch (err) {
+                errorElement.innerText = err.message;
+            }
+        }
+
+        function initSocialWorkspace() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('app-container').style.display = 'flex';
+            document.getElementById('user-tag').innerText = `@${currentUser}`;
+
+            socket = io({ transports: ['websocket'] });
+
+
+            socket.on('receive_message', (data) => {
+                const container = document.getElementById('message-display');
+                container.innerHTML += `
+                    <div class="msg-bubble msg-received">
+                        <strong>${data.sender}:</strong> ${data.message}
+                        <span class="msg-meta">${data.timestamp}</span>
+                    </div>`;
+                container.scrollTop = container.scrollHeight;
+                document.getElementById('typing-status').innerText = "";
+            });
+
+            socket.on('display_typing', (data) => {
+                document.getElementById('typing-status').innerText = `${data.username} is typing...`;
+                setTimeout(() => document.getElementById('typing-status').innerText = "", 3000);
+            });
+
+            fetchFeed();
+        }
+
+        async function publishPost() {
+            const content = document.getElementById('post-text').value;
+            const imageUrl = document.getElementById('post-image').value;
+            if(!content) return alert("Post content cannot be empty.");
+
+            await fetch('/api/posts', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${authToken}` 
+                },
+                body: JSON.stringify({ content, imageUrl })
+            });
+
+            document.getElementById('post-text').value = "";
+            document.getElementById('post-image').value = "";
+            fetchFeed();
+        }
+
+        async function fetchFeed() {
+            const response = await fetch('/api/posts');
+            const posts = await response.json();
+            const stream = document.getElementById('feed-stream');
+            stream.innerHTML = "";
+
+            posts.forEach(post => {
+                stream.innerHTML += `
+                    <div class="post-card">
+                        <div class="post-author">@${post.author}</div>
+                        <div>${post.content}</div>
+                        ${post.imageUrl ? `<img src="\${post.imageUrl}" class="post-img">` : ''}
+                    </div>`;
+            });
+        }
+
+        function sendLiveMessage() {
+            const msgInput = document.getElementById('chat-message');
+            if(!msgInput.value) return;
+
+            socket.emit('send_message', { sender: currentUser, message: msgInput.value });
+            msgInput.value = "";
+        }
+
+        function emitTyping() {
+            socket.emit('user_typing', { username: currentUser });
+        }
+    </script>
+</body>
+</html>
