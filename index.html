@@ -31,6 +31,7 @@
 </head>
 <body>
 
+    <!-- 1. AUTHENTICATION WALL -->
     <div id="auth-screen">
         <h2 style="color: #1877f2; margin-bottom: 15px;">Mega Social Engine</h2>
         <input type="text" id="auth-username" placeholder="Choose Username">
@@ -40,6 +41,7 @@
         <p id="auth-error" style="color: red; font-size: 12px; margin-top: 10px;"></p>
     </div>
 
+    <!-- 2. MAIN APPLICATION RUNTIME INTERFACE -->
     <div id="app-container">
         <div class="panel" id="feed-panel">
             <div class="panel-header">
@@ -66,9 +68,27 @@
     </div>
 
     <script>
-        let socket;
+        // CRITICAL FIX: Initialize network sockets immediately at runtime header
+        const socket = io({ transports: ['websocket', 'polling'] });
         let currentUser = "";
         let authToken = "";
+
+        // Setup live message listeners at startup
+        socket.on('receive_message', (data) => {
+            const container = document.getElementById('message-display');
+            container.innerHTML += `
+                <div class="msg-bubble msg-received">
+                    <strong>${data.sender}:</strong> ${data.message}
+                    <span class="msg-meta">${data.timestamp}</span>
+                </div>`;
+            container.scrollTop = container.scrollHeight;
+            document.getElementById('typing-status').innerText = "";
+        });
+
+        socket.on('display_typing', (data) => {
+            document.getElementById('typing-status').innerText = `${data.username} is typing...`;
+            setTimeout(() => document.getElementById('typing-status').innerText = "", 2000);
+        });
 
         async function handleAuth(type) {
             const username = document.getElementById('auth-username').value;
@@ -89,42 +109,18 @@
                 if(!response.ok) throw new Error(data.error || "Authentication failed");
 
                 if(type === 'register') {
-                    alert("Account created! Now click Sign In.");
+                    alert("Account created successfully! Click Sign In to open dashboard.");
                 } else {
                     authToken = data.token;
                     currentUser = username;
-                    initSocialWorkspace();
+                    document.getElementById('auth-screen').style.display = 'none';
+                    document.getElementById('app-container').style.display = 'flex';
+                    document.getElementById('user-tag').innerText = `@${currentUser}`;
+                    fetchFeed();
                 }
             } catch (err) {
                 errorElement.innerText = err.message;
             }
-        }
-
-        function initSocialWorkspace() {
-            document.getElementById('auth-screen').style.display = 'none';
-            document.getElementById('app-container').style.display = 'flex';
-            document.getElementById('user-tag').innerText = `@${currentUser}`;
-
-            socket = io({ transports: ['websocket'] });
-
-
-            socket.on('receive_message', (data) => {
-                const container = document.getElementById('message-display');
-                container.innerHTML += `
-                    <div class="msg-bubble msg-received">
-                        <strong>${data.sender}:</strong> ${data.message}
-                        <span class="msg-meta">${data.timestamp}</span>
-                    </div>`;
-                container.scrollTop = container.scrollHeight;
-                document.getElementById('typing-status').innerText = "";
-            });
-
-            socket.on('display_typing', (data) => {
-                document.getElementById('typing-status').innerText = `${data.username} is typing...`;
-                setTimeout(() => document.getElementById('typing-status').innerText = "", 3000);
-            });
-
-            fetchFeed();
         }
 
         async function publishPost() {
@@ -153,23 +149,27 @@
             stream.innerHTML = "";
 
             posts.forEach(post => {
+                // Fixed visual image rendering bug layout syntax
+                const imageTag = post.imageUrl ? `<img src="${post.imageUrl}" class="post-img">` : '';
                 stream.innerHTML += `
                     <div class="post-card">
                         <div class="post-author">@${post.author}</div>
                         <div>${post.content}</div>
-                        ${post.imageUrl ? `<img src="\${post.imageUrl}" class="post-img">` : ''}
+                        ${imageTag}
                     </div>`;
             });
         }
 
         function sendLiveMessage() {
             const msgInput = document.getElementById('chat-message');
-            if(!msgInput.value) return;
+            if(!msgInput.value || !currentUser) return;
+
             socket.emit('send_message', { sender: currentUser, message: msgInput.value });
             msgInput.value = "";
         }
 
         function emitTyping() {
+            if(!currentUser) return;
             socket.emit('user_typing', { username: currentUser });
         }
     </script>
